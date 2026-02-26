@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Network Archive | Portfolio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'JetBrains Mono', monospace; }
+        canvas { display: block; outline: none; }
+        
+        /* HUD Animations */
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .scanline::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 255, 255, 0.02) 51%, transparent 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .crt-flicker {
+            animation: flicker 0.15s infinite;
+        }
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            100% { opacity: 1; }
+        }
+        
+        /* Scrollbar for logs */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #00ffcc; }
+
+        .glass-panel {
+            background: rgba(10, 10, 15, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.1);
+        }
+
+        .text-glow {
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.7);
+        }
+        
+        .text-glow-red {
+            text-shadow: 0 0 5px rgba(255, 0, 60, 0.7);
+            color: #ff003c;
+        }
+
+        .border-red-theme {
+            border-color: rgba(255, 0, 60, 0.5);
+            box-shadow: 0 0 15px rgba(255, 0, 60, 0.2);
+        }
+    </style>
+</head>
+<body class="text-cyan-400 selection:bg-cyan-900 selection:text-white">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- CRT Overlay Effect -->
+    <div class="absolute inset-0 pointer-events-none z-10 scanline opacity-50"></div>
+
+    <!-- BOOT SEQUENCE OVERLAY (Fades out) -->
+    <div id="boot-screen" class="absolute inset-0 z-50 bg-black flex flex-col justify-center items-start p-10 font-mono text-xs md:text-sm text-green-500 crt-flicker">
+        <div id="boot-text" class="max-w-2xl"></div>
+    </div>
+
+    <!-- MAIN HUD INTERFACE -->
+    <div id="hud" class="absolute inset-0 z-20 pointer-events-none opacity-0 transition-opacity duration-1000 flex flex-col justify-between p-4 md:p-8">
+        
+        <!-- Top Bar -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Top Left: System Status -->
+            <div class="glass-panel p-4 rounded-br-2xl border-l-4 border-l-cyan-500 pointer-events-auto transition-colors duration-500" id="panel-tl">
+                <h1 class="text-xl font-bold font-['Orbitron'] tracking-widest text-glow mb-2">NEURAL_ARCHIVE.exe</h1>
+                <div class="text-xs space-y-1 opacity-80">
+                    <div class="flex justify-between w-48"><span>SYS_STATUS:</span> <span class="text-white animate-pulse">ONLINE</span></div>
+                    <div class="flex justify-between w-48"><span>UPTIME:</span> <span id="uptime-counter">1,337 HOURS</span></div>
+                    <div class="flex justify-between w-48"><span>LATENCY:</span> <span id="latency-val">14ms</span></div>
+                    <div class="flex justify-between w-48"><span>ENCRYPTION:</span> <span>AES-256</span></div>
+                </div>
+            </div>
+
+            <!-- Top Right: Coordinates -->
+            <div class="glass-panel p-4 rounded-bl-2xl text-right pointer-events-auto transition-colors duration-500" id="panel-tr">
+                <div class="text-xs font-bold text-gray-400 mb-1">COORDINATES</div>
+                <div class="text-lg font-mono text-glow" id="coords">X: 000.00 | Y: 000.00 | Z: 000.00</div>
+                <div class="text-[10px] text-gray-500 mt-1">TRACKING CURSOR POSITION</div>
+            </div>
+        </div>
+
+        <!-- Center: Project Detail View (Hidden by default) -->
+        <div id="project-detail" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl pointer-events-auto hidden">
+            <div class="glass-panel p-8 rounded-xl border border-cyan-500/30 relative overflow-hidden transition-colors duration-500" id="detail-panel">
+                <!-- Decorative corner markers -->
+                <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-current"></div>
+                <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-current"></div>
+                <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-current"></div>
+                <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-current"></div>
+
+                <button id="close-detail" class="absolute top-4 right-4 text-xs hover:text-white border border-current px-2 py-1 rounded hover:bg-cyan-900/50 transition-colors">[ CLOSE ]</button>
+
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="w-3 h-3 bg-cyan-400 rounded-full animate-ping"></div>
+                    <h2 id="detail-title" class="text-3xl font-['Orbitron'] font-bold text-white uppercase tracking-wider">PROJECT_NAME</h2>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-6 mb-6 text-sm">
+                    <div>
+                        <div class="text-gray-500 text-xs mb-1">RESOURCE ID</div>
+                        <div id="detail-id" class="font-mono text-white">0x7B2_UNKNOWN</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-500 text-xs mb-1">STATUS</div>
+                        <div class="text-green-400 font-bold">DEPLOYED // ACTIVE</div>
+                    </div>
+                </div>
+
+                <p id="detail-desc" class="text-gray-300 leading-relaxed mb-6 border-l-2 border-cyan-500/50 pl-4">
+                    Project description loading...
+                </p>
+
+                <div class="mb-4">
+                    <div class="text-xs text-gray-500 mb-2">TECH STACK INTEGRATION</div>
+                    <div id="detail-stack" class="flex flex-wrap gap-2">
+                        <!-- Tags injected via JS -->
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-end mt-6 pt-4 border-t border-white/10">
+                     <div class="text-[10px] text-gray-600">
+                        LAST_COMMIT: <span id="detail-commit">4.2 hrs ago</span>
+                     </div>
+                     <button class="bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 px-6 py-2 rounded text-sm transition-all hover:shadow-[0_0_15px_rgba(0,255,204,0.4)]">
+                        ACCESS_REPOSITORY ->
+                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="flex justify-between items-end w-full">
+            <!-- Bottom Left: System Log -->
+            <div class="glass-panel p-4 rounded-tr-2xl w-64 h-32 overflow-hidden pointer-events-auto transition-colors duration-500" id="panel-bl">
+                <div class="text-[10px] text-gray-500 border-b border-gray-700 pb-1 mb-2 flex justify-between">
+                    <span>SYSTEM_LOG</span>
+                    <span class="animate-pulse">● REC</span>
+                </div>
+                <div id="system-log" class="text-[10px] font-mono space-y-1 h-full overflow-y-auto text-gray-400">
+                    <!-- Logs go here -->
+                </div>
+            </div>
+
+            <!-- Bottom Right: Instructions / Memory -->
+            <div class="glass-panel p-4 rounded-tl-2xl text-right pointer-events-auto transition-colors duration-500" id="panel-br">
+                <div class="text-xs font-bold text-gray-400 mb-2">MEMORY_BUFFER</div>
+                <div class="w-48 h-2 bg-gray-800 rounded-full overflow-hidden mb-2 ml-auto">
+                    <div class="h-full bg-cyan-500 w-[42%] animate-pulse"></div>
+                </div>
+                <div class="text-[10px] text-gray-500 mb-4">42.8 MB / STABLE</div>
+                
+                <div class="text-[10px] text-gray-400 border-t border-gray-700 pt-2">
+                    <p>NAVIGATE: [MOUSE MOVE]</p>
+                    <p>SELECT: [CLICK NODE]</p>
+                    <p>RESET: [CLICK VOID]</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA: PROJECTS ---
+        const projects = [
+            {
+                id: "0x7B2_ECOM",
+                title: "Nebula Commerce",
+                desc: "A distributed microservices architecture handling high-throughput transactional data. Features real-time inventory management and AI-driven recommendation engines.",
+                stack: ["React", "Node.js", "GraphQL", "Docker"],
+                color: 0x00ffff,
+                pos: { x: 15, y: 5, z: 0 }
+            },
+            {
+                id: "0x9A1_FINTECH",
+                title: "Quantum Ledger",
+                desc: "Blockchain visualization tool for financial auditing. Renders complex transaction trees in a 3D force-directed graph using WebGL acceleration.",
+                stack: ["Three.js", "Vue", "Python", "TensorFlow"],
+                color: 0xff00ff,
+                pos: { x: -10, y: 12, z: 5 }
+            },
+            {
+                id: "0x3C4_HEALTH",
+                title: "Bio-Sync Monitor",
+                desc: "IoT dashboard for remote patient monitoring. Processes biometrics via MQTT protocol and alerts medical staff using predictive anomaly detection.",
+                stack: ["Angular", "Firebase", "D3.js", "IoT"],
+                color: 0x00ff00,
+                pos: { x: -12, y: -8, z: -5 }
+            },
+            {
+                id: "0x5F6_AI",
+                title: "Sentiment Core",
+                desc: "Natural Language Processing engine analyzing global social media trends. Visualizes emotional heatmaps across geographic coordinates.",
+                stack: ["Python", "PyTorch", "Mapbox", "React"],
+                color: 0xffff00,
+                pos: { x: 8, y: -10, z: 8 }
+            },
+            {
+                id: "0x1A2_CMS",
+                title: "Void CMS",
+                desc: "Headless content management system designed for space agencies. Optimized for low-bandwidth satellite uplinks and offline-first editing.",
+                stack: ["Next.js", "Sanity", "Tailwind", "Rust"],
+                color: 0xff3333,
+                pos: { x: 0, y: 0, z: -15 }
+            }
+        ];
+
+        // --- STATE MANAGEMENT ---
+        const state = {
+            mouseX: 0,
+            mouseY: 0,
+            targetX: 0,
+            targetY: 0,
+            isHovering: false,
+            activeProject: null,
+            emergencyMode: false,
+            windowHalfX: window.innerWidth / 2,
+            windowHalfY: window.innerHeight / 2
+        };
+
+        // --- THREE.JS SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        camera.position.y = 0;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(0, 0, 0);
+        scene.add(pointLight);
+
+        // --- OBJECTS: STARFIELD ---
+        const starGeometry = new THREE.BufferGeometry();
+        const starCount = 2000;
+        const starPos = new Float32Array(starCount * 3);
+        
+        for(let i=0; i<starCount * 3; i++) {
+            starPos[i] = (Math.random() - 0.5) * 200;
+        }
+        
+        starGeometry.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, transparent: true, opacity: 0.8 });
+        const starField = new THREE.Points(starGeometry, starMaterial);
+        scene.add(starField);
+
+        // --- OBJECTS: NODES & LINES ---
+        const nodesGroup = new THREE.Group();
+        scene.add(nodesGroup);
+        
+        const linesGroup = new THREE.Group();
+        scene.add(linesGroup);
+
+        const nodeMeshes = [];
+
+        // Central Core
+        const coreGeo = new THREE.IcosahedronGeometry(2, 1);
+        const coreMat = new THREE.MeshBasicMaterial({ 
+            color: 0xffffff, 
+            wireframe: true,
+            transparent: true,
+            opacity: 0.3
+        });
+        const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+        
+        // Core Glow (Inner)
+        const coreGlowGeo = new THREE.SphereGeometry(1.5, 16, 16);
+        const coreGlowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+        const coreGlow = new THREE.Mesh(coreGlowGeo, coreGlowMat);
+        coreMesh.add(coreGlow);
+        
+        nodesGroup.add(coreMesh);
+        nodeMeshes.push({ mesh: coreMesh, data: { title: "CORE_SYSTEM" }, isCore: true });
+
+        // Project Nodes
+        projects.forEach((proj, index) => {
+            // Geometry
+            const geometry = new THREE.SphereGeometry(1.2, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: proj.color,
+                emissive: proj.color,
+                emissiveIntensity: 0.5,
+                shininess: 100
+            });
+            const sphere = new THREE.Mesh(geometry, material);
+            sphere.position.set(proj.pos.x, proj.pos.y, proj.pos.z);
+            
+            // Add Glow Sprite (simple circle texture simulated)
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16,16,0, 16,16,16);
+            gradient.addColorStop(0, `rgba(${new THREE.Color(proj.color).r*255},${new THREE.Color(proj.color).g*255},${new THREE.Color(proj.color).b*255},1)`);
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0,0,32,32);
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, blending: THREE.AdditiveBlending });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.scale.set(6, 6, 1);
+            sphere.add(sprite);
+
+            // Add to scene
+            nodesGroup.add(sphere);
+            nodeMeshes.push({ mesh: sphere, data: proj, originalPos: proj.pos });
+
+            // Draw Line to Core
+            const lineMat = new THREE.LineBasicMaterial({ 
+                color: proj.color, 
+                transparent: true, 
+                opacity: 0.3 
+            });
+            const points = [];
+            points.push(new THREE.Vector3(0,0,0));
+            points.push(new THREE.Vector3(proj.pos.x, proj.pos.y, proj.pos.z));
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(lineGeo, lineMat);
+            linesGroup.add(line);
+        });
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function onMouseMove(event) {
+            // Normalize mouse for Raycaster
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Parallax effect vars
+            state.mouseX = (event.clientX - state.windowHalfX) * 0.001;
+            state.mouseY = (event.clientY - state.windowHalfY) * 0.001;
+            
+            // Update HUD Coords
+            document.getElementById('coords').innerText = 
+                `X: ${mouse.x.toFixed(2)} | Y: ${mouse.y.toFixed(2)} | Z: ${camera.position.z.toFixed(1)}`;
+        }
+
+        function onClick(event) {
+            if (state.activeProject && !state.isHovering) {
+                // Clicked void, reset
+                resetView();
+            } else if (state.isHovering && state.hoveredNode && !state.hoveredNode.isCore) {
+                // Clicked Node
+                activateProject(state.hoveredNode);
+            }
+        }
+
+        // Keyboard Easter Egg
+        let keyBuffer = "";
+        document.addEventListener('keydown', (e) => {
+            keyBuffer += e.key;
+            if(keyBuffer.includes('sudo')) {
+                toggleEmergencyMode();
+                keyBuffer = "";
+                addLog("COMMAND 'SUDO' DETECTED. PRIVILEGES ESCALATED.");
+            }
+            if(keyBuffer.length > 10) keyBuffer = keyBuffer.slice(-4);
+        });
+
+        function toggleEmergencyMode() {
+            state.emergencyMode = !state.emergencyMode;
+            const color = state.emergencyMode ? 0xff003c : 0x00ffcc;
+            const textColor = state.emergencyMode ? 'text-red-500' : 'text-cyan-400';
+            const borderColor = state.emergencyMode ? 'border-red-500' : 'border-cyan-500';
+            
+            // Update UI Colors
+            document.body.className = document.body.className.replace(/text-cyan-400|text-red-500/, textColor);
+            
+            // Update Panels
+            const panels = ['panel-tl', 'panel-tr', 'panel-bl', 'panel-br', 'detail-panel'];
+            panels.forEach(id => {
+                const el = document.getElementById(id);
+                if(el) {
+                    if(state.emergencyMode) {
+                        el.classList.add('border-red-theme');
+                        el.style.borderColor = "rgba(255, 0, 60, 0.5)";
+                        el.style.boxShadow = "0 0 15px rgba(255, 0, 60, 0.2)";
+                    } else {
+                        el.classList.remove('border-red-theme');
+                        el.style.borderColor = "rgba(0, 255, 204, 0.2)";
+                        el.style.boxShadow = "0 0 15px rgba(0, 255, 204, 0.1)";
+                    }
+                }
+            });
+
+            // Update Core Glow
+            coreGlow.material.color.setHex(color);
+            
+            // Update Lines
+            linesGroup.children.forEach((line, idx) => {
+                 // Keep project colors or turn red? Let's turn them reddish for effect
+                 if(state.emergencyMode) line.material.color.setHex(0xff003c);
+                 else line.material.color.setHex(projects[idx].color);
+            });
+        }
+
+        function activateProject(nodeData) {
+            state.activeProject = nodeData;
+            
+            // 1. Camera Zoom
+            const targetPos = nodeData.mesh.position.clone();
+            // Offset camera slightly
+            targetPos.z += 10; 
+            
+            gsap.to(camera.position, {
+                x: nodeData.mesh.position.x,
+                y: nodeData.mesh.position.y,
+                z: nodeData.mesh.position.z + 12,
+                duration: 1.5,
+                ease: "power3.inOut"
+            });
+            
+            gsap.to(camera.rotation, {
+                x: 0, y: 0, z: 0, // Reset rotation
+                duration: 1
+            });
+
+            // 2. Show UI
+            const detail = document.getElementById('project-detail');
+            detail.classList.remove('hidden');
+            
+            // Populate Data
+            document.getElementById('detail-title').innerText = nodeData.data.title;
+            document.getElementById('detail-id').innerText = nodeData.data.id;
+            document.getElementById('detail-desc').innerText = nodeData.data.desc;
+            
+            const stackContainer = document.getElementById('detail-stack');
+            stackContainer.innerHTML = '';
+            nodeData.data.stack.forEach(tech => {
+                const span = document.createElement('span');
+                span.className = `px-2 py-1 border ${state.emergencyMode ? 'border-red-500/50 text-red-300' : 'border-cyan-500/50 text-cyan-300'} text-xs rounded bg-black/40`;
+                span.innerText = tech;
+                stackContainer.appendChild(span);
+            });
+
+            addLog(`ACCESSING NODE: ${nodeData.data.id}...`);
+        }
+
+        function resetView() {
+            state.activeProject = null;
+            
+            gsap.to(camera.position, {
+                x: 0, y: 0, z: 30,
+                duration: 1.2,
+                ease: "power2.inOut"
+            });
+
+            document.getElementById('project-detail').classList.add('hidden');
+            addLog("RETURNING TO ROOT DIRECTORY...");
+        }
+
+        document.getElementById('close-detail').addEventListener('click', resetView);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('click', onClick);
+        window.addEventListener('resize', () => {
+            state.windowHalfX = window.innerWidth / 2;
+            state.windowHalfY = window.innerHeight / 2;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Rotate Starfield slowly
+            starField.rotation.y += 0.0005;
+            starField.rotation.x += 0.0002;
+
+            // 2. Rotate Core
+            coreMesh.rotation.y -= 0.01;
+            coreMesh.rotation.z += 0.005;
+
+            // 3. Parallax Camera Movement (if not focused on project)
+            if (!state.activeProject) {
+                state.targetX = state.mouseX * 10;
+                state.targetY = state.mouseY * 10;
+                
+                camera.position.x += (state.targetX - camera.position.x) * 0.05;
+                camera.position.y += (-state.targetY - camera.position.y) * 0.05;
+                camera.lookAt(scene.position);
+            }
+
+            // 4. Raycasting (Hover Effects)
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(nodesGroup.children);
+
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                // Find associated data
+                const nodeData = nodeMeshes.find(n => n.mesh === object);
+                
+                if (nodeData) {
+                    state.isHovering = true;
+                    state.hoveredNode = nodeData;
+                    document.body.style.cursor = 'pointer';
+                    
+                    // Pulse effect
+                    object.scale.setScalar(1.2);
+                }
+            } else {
+                state.isHovering = false;
+                state.hoveredNode = null;
+                document.body.style.cursor = 'default';
+                
+                // Reset scales
+                nodeMeshes.forEach(n => {
+                    if(n.mesh !== state.activeProject?.mesh) {
+                        n.mesh.scale.setScalar(1);
+                    }
+                });
+            }
+
+            // 5. Animate Lines (Pulse opacity)
+            const time = Date.now() * 0.001;
+            linesGroup.children.forEach((line, i) => {
+                line.material.opacity = 0.3 + Math.sin(time + i) * 0.2;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // --- BOOT SEQUENCE LOGIC ---
+        const bootText = [
+            "[BOOT]: Initializing Neural Interface v4.0.2...",
+            "[STATUS]: Establishing handshake with Portfolio Node...",
+            "[ENCRYPTION]: 256-bit AES Layer Active.",
+            "[LOG]: Loading Core Competencies into High-Speed Cache...",
+            "[SYSTEM]: Welcome, User. Integrity Check: 100%.",
+            "[INPUT]: Mouse tracking enabled.",
+            "[RENDER]: WebGL Context verified.",
+            ">> ACCESS GRANTED."
+        ];
+
+        const bootContainer = document.getElementById('boot-text');
+        const bootScreen = document.getElementById('boot-screen');
+        const hud = document.getElementById('hud');
+        let lineIndex = 0;
+
+        function typeBootSequence() {
+            if (lineIndex < bootText.length) {
+                const div = document.createElement('div');
+                div.innerText = bootText[lineIndex];
+                bootContainer.appendChild(div);
+                lineIndex++;
+                setTimeout(typeBootSequence, 400);
+            } else {
+                setTimeout(() => {
+                    bootScreen.style.opacity = 0;
+                    setTimeout(() => {
+                        bootScreen.style.display = 'none';
+                        hud.classList.remove('opacity-0');
+                        addLog("SYSTEM INITIALIZED.");
+                        addLog("WAITING FOR USER INPUT...");
+                    }, 1000);
+                }, 800);
+            }
+        }
+
+        // --- UTILS ---
+        function addLog(msg) {
+            const log = document.getElementById('system-log');
+            const entry = document.createElement('div');
+            const time = new Date().toLocaleTimeString('en-US', {hour12: false});
+            entry.innerText = `[${time}] ${msg}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Random Latency fluctuation
+        setInterval(() => {
+            const lat = Math.floor(Math.random() * 20) + 5;
+            document.getElementById('latency-val').innerText = lat + "ms";
+        }, 2000);
+
+        // Start
+        typeBootSequence();
+        animate();
+
+    </script>
+</body>
+</html>
