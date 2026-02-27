@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScene } from '@/context/SceneContext';
+import { useSoundEffects } from '@/hooks/useSoundEffects';
 
 export default function TerminalHero() {
   const router = useRouter();
   const { addSystemLog, setCameraMode } = useScene();
+  const { playClickSound } = useSoundEffects();
   const [displayedText, setDisplayedText] = useState('');
   const [currentLine, setCurrentLine] = useState(0);
 
@@ -39,6 +41,7 @@ export default function TerminalHero() {
   }, [currentLine]);
 
   const handleInitialize = () => {
+    playClickSound();
     addSystemLog('[SYSTEM]: Initializing archive scan...');
     addSystemLog('[SYSTEM]: Loading project nodes...');
     setCameraMode('projects');

@@ -6,9 +6,11 @@ import { motion } from 'framer-motion';
 import { useScene } from '@/context/SceneContext';
 import { useEffect } from 'react';
 import HUD from '@/components/HUD';
+import { useSoundEffects } from '@/hooks/useSoundEffects';
 
 export default function ProjectsPage() {
   const { setHoveredNodeId, setCameraMode, addSystemLog } = useScene();
+  const { playHoverSound, playClickSound } = useSoundEffects();
 
   useEffect(() => {
     setCameraMode('projects');
@@ -50,12 +52,13 @@ export default function ProjectsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
-              <Link href={`/case-study/${project.id}`}>
+              <Link href={`/case-study/${project.id}`} onClick={playClickSound}>
                 <article 
                   className="group h-full bg-[#111] border border-gray-800 rounded-xl overflow-hidden hover:border-cyan-500/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(0,255,204,0.1)]"
                   onMouseEnter={() => {
                     setHoveredNodeId(project.id);
                     addSystemLog(`[SYSTEM]: Accessing encrypted data for ${project.id.toUpperCase()}...`);
+                    playHoverSound();
                   }}
                   onMouseLeave={() => setHoveredNodeId(null)}
                 >
